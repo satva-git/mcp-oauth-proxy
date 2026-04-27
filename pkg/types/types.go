@@ -21,6 +21,13 @@ type Config struct {
 	TrustedAudiences     []string
 	OAuthTokenURL        string
 	OAuthUserinfoURL     string
+	// Extra query-string parameters appended verbatim to the authorize URL
+	// (e.g. "type=web_server" for 37signals Basecamp). Format: URL-encoded
+	// query string (a=1&b=2). Empty means no extra params.
+	OAuthExtraAuthorizeParams string
+	// Extra parameters added to the token-exchange POST body (e.g.
+	// "type=web_server" for 37signals Basecamp). Same format as above.
+	OAuthExtraTokenParams string
 	ScopesSupported      string
 	EncryptionKey        string
 	MCPServerURL         string
