@@ -18,8 +18,13 @@ type GenericProvider struct {
 	authorizeURL string
 	tokenURL     string // optional override; skips discovery for token endpoint
 	userinfoURL  string // optional override; skips discovery for userinfo endpoint
-	metadata     *types.OAuthMetadata
-	httpClient   *http.Client
+	// Extra params appended to the authorize URL and token-exchange body.
+	// Used for non-standard providers (e.g. 37signals Basecamp requires
+	// type=web_server on both endpoints). Nil/empty when not configured.
+	extraAuthorizeParams url.Values
+	extraTokenParams     url.Values
+	metadata             *types.OAuthMetadata
+	httpClient           *http.Client
 }
 
 // NewGenericProvider creates a new generic OAuth provider
@@ -46,6 +51,29 @@ func NewGenericProviderWithOverrides(authorizeURL, tokenURL, userinfoURL string)
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// SetExtraParams configures non-standard query/body parameters appended to
+// the authorize URL and token-exchange body. authorizeRaw and tokenRaw are
+// URL-encoded query strings (e.g. "type=web_server&foo=bar"). Empty strings
+// disable the corresponding extras. Designed for providers like 37signals
+// Basecamp that require fixed extra params on every OAuth call.
+func (p *GenericProvider) SetExtraParams(authorizeRaw, tokenRaw string) error {
+	if authorizeRaw != "" {
+		v, err := url.ParseQuery(authorizeRaw)
+		if err != nil {
+			return fmt.Errorf("invalid extra authorize params: %w", err)
+		}
+		p.extraAuthorizeParams = v
+	}
+	if tokenRaw != "" {
+		v, err := url.ParseQuery(tokenRaw)
+		if err != nil {
+			return fmt.Errorf("invalid extra token params: %w", err)
+		}
+		p.extraTokenParams = v
+	}
+	return nil
 }
 
 // discoverEndpoints attempts to discover OAuth endpoints using well-known paths.
@@ -175,6 +203,11 @@ func (p *GenericProvider) GetAuthorizationURLWithPKCE(clientID, redirectURI, sco
 	if codeChallenge != "" {
 		opts = append(opts, oauth2.S256ChallengeOption(codeChallenge))
 	}
+	for k, vs := range p.extraAuthorizeParams {
+		for _, v := range vs {
+			opts = append(opts, oauth2.SetAuthURLParam(k, v))
+		}
+	}
 	return o.AuthCodeURL(state, opts...)
 }
 
@@ -184,7 +217,14 @@ func (p *GenericProvider) ExchangeCodeForToken(ctx context.Context, code, client
 		return nil, fmt.Errorf("failed to discover endpoints: %w", err)
 	}
 
-	return p.buildOAuth2Config(p.metadata.AuthorizationEndpoint, clientID, clientSecret, redirectURI, "").Exchange(ctx, code)
+	cfg := p.buildOAuth2Config(p.metadata.AuthorizationEndpoint, clientID, clientSecret, redirectURI, "")
+	opts := make([]oauth2.AuthCodeOption, 0, len(p.extraTokenParams))
+	for k, vs := range p.extraTokenParams {
+		for _, v := range vs {
+			opts = append(opts, oauth2.SetAuthURLParam(k, v))
+		}
+	}
+	return cfg.Exchange(ctx, code, opts...)
 }
 
 // GetUserInfo retrieves user information using the access token

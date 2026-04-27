@@ -29,6 +29,11 @@ type RootCmd struct {
 	OAuthJWKSURL      string `name:"oauth-jwks-url" env:"OAUTH_JWKS_URL" usage:"JWKS endpoint URL from your OAuth provider (e.g., https://accounts.google.com/.well-known/openid-configuration/jwks)"`
 	OAuthTokenURL     string `name:"oauth-token-url" env:"OAUTH_TOKEN_URL" usage:"Override the discovered token endpoint URL (useful for non-OIDC providers like 37signals Basecamp)"`
 	OAuthUserinfoURL  string `name:"oauth-userinfo-url" env:"OAUTH_USERINFO_URL" usage:"Override the discovered userinfo endpoint URL (useful for non-OIDC providers like 37signals Basecamp)"`
+	// Extra params (URL-encoded query strings) appended to authorize and token requests.
+	// Required for providers like 37signals Basecamp which mandate `type=web_server`
+	// on /authorization/new and /authorization/token. Empty means no extras.
+	OAuthExtraAuthorizeParams string `name:"oauth-extra-authorize-params" env:"OAUTH_EXTRA_AUTHORIZE_PARAMS" usage:"URL-encoded query string appended to the authorize URL (e.g. 'type=web_server' for 37signals Basecamp)"`
+	OAuthExtraTokenParams     string `name:"oauth-extra-token-params" env:"OAUTH_EXTRA_TOKEN_PARAMS" usage:"URL-encoded query string added to the token-exchange POST body (e.g. 'type=web_server' for 37signals Basecamp)"`
 
 	// Scopes and MCP configuration
 	ScopesSupported string `name:"scopes-supported" env:"SCOPES_SUPPORTED" usage:"Comma-separated list of supported OAuth scopes (e.g., 'openid,profile,email')" required:"true"`
@@ -72,6 +77,8 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 		OAuthJWKSURL:      c.OAuthJWKSURL,
 		OAuthTokenURL:     c.OAuthTokenURL,
 		OAuthUserinfoURL:  c.OAuthUserinfoURL,
+		OAuthExtraAuthorizeParams: c.OAuthExtraAuthorizeParams,
+		OAuthExtraTokenParams:     c.OAuthExtraTokenParams,
 		ScopesSupported:   c.ScopesSupported,
 		MCPServerURL:      c.MCPServerURL,
 		EncryptionKey:     c.EncryptionKey,

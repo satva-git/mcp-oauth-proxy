@@ -114,6 +114,11 @@ func NewOAuthProxy(config *types.Config) (*OAuthProxy, error) {
 		} else {
 			genericProvider = providers.NewGenericProvider(config.OAuthAuthorizeURL)
 		}
+		if config.OAuthExtraAuthorizeParams != "" || config.OAuthExtraTokenParams != "" {
+			if err := genericProvider.SetExtraParams(config.OAuthExtraAuthorizeParams, config.OAuthExtraTokenParams); err != nil {
+				return nil, fmt.Errorf("invalid OAuth extra params: %w", err)
+			}
+		}
 		providerManager.RegisterProvider("generic", genericProvider)
 		provider = "generic"
 	}
