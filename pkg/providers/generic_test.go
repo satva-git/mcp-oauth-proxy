@@ -1,11 +1,15 @@
 package providers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenericProvider_RefreshTokenParams(t *testing.T) {
@@ -45,4 +49,76 @@ func TestGenericProvider_RefreshTokenParams(t *testing.T) {
 		assert.Contains(t, authURL, "scope=read%3Auser+user%3Aemail")
 		assert.Contains(t, authURL, "state=test_state")
 	})
+}
+
+// TestGenericProvider_EndpointOverrides verifies that token/userinfo URL
+// overrides bypass OIDC discovery entirely when both are set, so non-OIDC
+// providers (e.g. 37signals Basecamp) work without a /.well-known/* document.
+func TestGenericProvider_EndpointOverrides(t *testing.T) {
+	provider := NewGenericProviderWithOverrides(
+		"https://launchpad.37signals.com/authorization/new",
+		"https://launchpad.37signals.com/authorization/token",
+		"https://launchpad.37signals.com/authorization.json",
+	)
+	require.NoError(t, provider.discoverEndpoints())
+	assert.Equal(t, "https://launchpad.37signals.com/authorization/token", provider.metadata.TokenEndpoint)
+	assert.Equal(t, "https://launchpad.37signals.com/authorization.json", provider.metadata.UserinfoEndpoint)
+	assert.Equal(t, "https://launchpad.37signals.com/authorization/new", provider.metadata.AuthorizationEndpoint)
+}
+
+// TestGenericProvider_BasecampIdentityShape verifies that GetUserInfo can parse
+// 37signals Basecamp's nested {"identity": {...}} response shape.
+func TestGenericProvider_BasecampIdentityShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"identity": map[string]any{
+				"id":            float64(12345678),
+				"email_address": "user@example.com",
+				"first_name":    "Ada",
+				"last_name":     "Lovelace",
+			},
+			"accounts": []any{},
+		})
+	}))
+	defer srv.Close()
+
+	provider := NewGenericProviderWithOverrides(
+		"https://launchpad.37signals.com/authorization/new",
+		srv.URL+"/token",
+		srv.URL,
+	)
+
+	ui, err := provider.GetUserInfo(context.Background(), "fake-token")
+	require.NoError(t, err)
+	assert.Equal(t, "12345678", ui.ID)
+	assert.Equal(t, "user@example.com", ui.Email)
+	assert.Equal(t, "Ada", ui.GivenName)
+	assert.Equal(t, "Lovelace", ui.FamilyName)
+	assert.Equal(t, "Ada Lovelace", ui.Name)
+}
+
+// TestGenericProvider_BackwardsCompatibleFlatShape ensures the original
+// flat OIDC parsing still works when no identity sub-object is present.
+func TestGenericProvider_BackwardsCompatibleFlatShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sub":   "google-user-id",
+			"email": "g@example.com",
+			"name":  "G User",
+		})
+	}))
+	defer srv.Close()
+
+	provider := NewGenericProviderWithOverrides(
+		"https://accounts.google.com/o/oauth2/v2/auth",
+		srv.URL+"/token",
+		srv.URL,
+	)
+	ui, err := provider.GetUserInfo(context.Background(), "fake")
+	require.NoError(t, err)
+	assert.Equal(t, "google-user-id", ui.ID)
+	assert.Equal(t, "g@example.com", ui.Email)
+	assert.Equal(t, "G User", ui.Name)
 }

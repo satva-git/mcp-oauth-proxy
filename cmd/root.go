@@ -27,6 +27,8 @@ type RootCmd struct {
 	OAuthClientSecret string `name:"oauth-client-secret" env:"OAUTH_CLIENT_SECRET" usage:"OAuth client secret from your OAuth provider" required:"true"`
 	OAuthAuthorizeURL string `name:"oauth-authorize-url" env:"OAUTH_AUTHORIZE_URL" usage:"Authorization endpoint URL from your OAuth provider (e.g., https://accounts.google.com)" required:"true"`
 	OAuthJWKSURL      string `name:"oauth-jwks-url" env:"OAUTH_JWKS_URL" usage:"JWKS endpoint URL from your OAuth provider (e.g., https://accounts.google.com/.well-known/openid-configuration/jwks)"`
+	OAuthTokenURL     string `name:"oauth-token-url" env:"OAUTH_TOKEN_URL" usage:"Override the discovered token endpoint URL (useful for non-OIDC providers like 37signals Basecamp)"`
+	OAuthUserinfoURL  string `name:"oauth-userinfo-url" env:"OAUTH_USERINFO_URL" usage:"Override the discovered userinfo endpoint URL (useful for non-OIDC providers like 37signals Basecamp)"`
 
 	// Scopes and MCP configuration
 	ScopesSupported string `name:"scopes-supported" env:"SCOPES_SUPPORTED" usage:"Comma-separated list of supported OAuth scopes (e.g., 'openid,profile,email')" required:"true"`
@@ -68,6 +70,8 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 		OAuthClientSecret: c.OAuthClientSecret,
 		OAuthAuthorizeURL: c.OAuthAuthorizeURL,
 		OAuthJWKSURL:      c.OAuthJWKSURL,
+		OAuthTokenURL:     c.OAuthTokenURL,
+		OAuthUserinfoURL:  c.OAuthUserinfoURL,
 		ScopesSupported:   c.ScopesSupported,
 		MCPServerURL:      c.MCPServerURL,
 		EncryptionKey:     c.EncryptionKey,

@@ -1,4 +1,15 @@
-# MCP OAuth Proxy
+# MCP OAuth Proxy (Satva fork)
+
+> **Fork notice.** This is a fork of [obot-platform/mcp-oauth-proxy](https://github.com/obot-platform/mcp-oauth-proxy)
+> with non-OIDC OAuth2 support added (extra `OAUTH_TOKEN_URL` / `OAUTH_USERINFO_URL`
+> env-var overrides and a fallback parser for 37signals Basecamp's nested
+> `identity.*` userinfo shape). The behavior is unchanged when those env vars
+> are not set, so the fork remains a drop-in replacement for the upstream
+> image. We do not claim ownership of this project — please file feature
+> requests / bugs upstream first.
+>
+> Maintained by Satva Solutions for the [O-Bot](https://obot.satva.xyz)
+> deployment.  See the patch commit for details.
 
 MCP OAuth Proxy is an open-source OAuth 2.1 proxy server that adds authentication and authorization to MCP (Model Context Protocol) servers.
 

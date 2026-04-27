@@ -104,7 +104,16 @@ func NewOAuthProxy(config *types.Config) (*OAuthProxy, error) {
 
 	// Register generic provider
 	if config.OAuthClientID != "" && config.OAuthClientSecret != "" && config.OAuthAuthorizeURL != "" {
-		genericProvider := providers.NewGenericProvider(config.OAuthAuthorizeURL)
+		var genericProvider *providers.GenericProvider
+		if config.OAuthTokenURL != "" || config.OAuthUserinfoURL != "" {
+			genericProvider = providers.NewGenericProviderWithOverrides(
+				config.OAuthAuthorizeURL,
+				config.OAuthTokenURL,
+				config.OAuthUserinfoURL,
+			)
+		} else {
+			genericProvider = providers.NewGenericProvider(config.OAuthAuthorizeURL)
+		}
 		providerManager.RegisterProvider("generic", genericProvider)
 		provider = "generic"
 	}
