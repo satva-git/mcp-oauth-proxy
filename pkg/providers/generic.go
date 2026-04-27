@@ -16,6 +16,8 @@ import (
 // GenericProvider implements a generic OAuth provider
 type GenericProvider struct {
 	authorizeURL string
+	tokenURL     string // optional override; skips discovery for token endpoint
+	userinfoURL  string // optional override; skips discovery for userinfo endpoint
 	metadata     *types.OAuthMetadata
 	httpClient   *http.Client
 }
@@ -30,7 +32,25 @@ func NewGenericProvider(authorizeURL string) *GenericProvider {
 	}
 }
 
-// discoverEndpoints attempts to discover OAuth endpoints using well-known paths
+// NewGenericProviderWithOverrides creates a generic OAuth provider with optional
+// token and userinfo endpoint overrides. When an override is non-empty, OIDC
+// discovery is skipped for that endpoint and the override is used directly.
+// This supports non-OIDC OAuth2 providers (e.g. 37signals Basecamp) that do
+// not publish a /.well-known/* document.
+func NewGenericProviderWithOverrides(authorizeURL, tokenURL, userinfoURL string) *GenericProvider {
+	return &GenericProvider{
+		authorizeURL: authorizeURL,
+		tokenURL:     tokenURL,
+		userinfoURL:  userinfoURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// discoverEndpoints attempts to discover OAuth endpoints using well-known paths.
+// If tokenURL or userinfoURL overrides were provided, those values are applied
+// after discovery (or used to skip discovery entirely when both are set).
 func (p *GenericProvider) discoverEndpoints() error {
 	if p.metadata != nil {
 		return nil // Already discovered
@@ -43,6 +63,22 @@ func (p *GenericProvider) discoverEndpoints() error {
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+
+	// If both endpoints are overridden, skip discovery entirely. This lets
+	// operators front non-OIDC providers (e.g. 37signals Basecamp) which do
+	// not publish OIDC discovery documents.
+	if p.tokenURL != "" && p.userinfoURL != "" {
+		p.metadata = &types.OAuthMetadata{
+			Issuer:                 baseURL,
+			AuthorizationEndpoint:  p.authorizeURL,
+			TokenEndpoint:          p.tokenURL,
+			UserinfoEndpoint:       p.userinfoURL,
+			ScopesSupported:        []string{},
+			ResponseTypesSupported: []string{"code"},
+			GrantTypesSupported:    []string{"authorization_code", "refresh_token"},
+		}
+		return nil
+	}
 
 	// Try different well-known paths
 	wellKnownPaths := []string{
@@ -61,6 +97,13 @@ func (p *GenericProvider) discoverEndpoints() error {
 			if p.metadata.UserinfoEndpoint == "" && parsedURL.Host == "github.com" {
 				p.metadata.UserinfoEndpoint = "https://api.github.com/user"
 			}
+			// Apply per-endpoint overrides on top of the discovered metadata.
+			if p.tokenURL != "" {
+				p.metadata.TokenEndpoint = p.tokenURL
+			}
+			if p.userinfoURL != "" {
+				p.metadata.UserinfoEndpoint = p.userinfoURL
+			}
 			return nil
 		}
 	}
@@ -74,6 +117,12 @@ func (p *GenericProvider) discoverEndpoints() error {
 		ScopesSupported:        []string{"openid", "profile", "email"},
 		ResponseTypesSupported: []string{"code"},
 		GrantTypesSupported:    []string{"authorization_code", "refresh_token"},
+	}
+	if p.tokenURL != "" {
+		p.metadata.TokenEndpoint = p.tokenURL
+	}
+	if p.userinfoURL != "" {
+		p.metadata.UserinfoEndpoint = p.userinfoURL
 	}
 
 	return nil
@@ -193,6 +242,45 @@ func (p *GenericProvider) GetUserInfo(ctx context.Context, accessToken string) (
 	}
 
 	if userInfo.ID == "" && p.metadata.UserinfoEndpoint == "https://api.github.com/user" {
+		userInfo.ID = userInfo.Login
+	}
+
+	// 37signals Basecamp returns a nested {"identity": {"id", "email_address",
+	// "first_name", "last_name"}, ...} shape rather than the flat OIDC fields.
+	// Fall back to that shape when the flat fields are missing. This is purely
+	// additive — providers that already populate id/sub/email/etc are unaffected.
+	if identity, ok := userInfoResp["identity"].(map[string]any); ok {
+		if userInfo.ID == "" && userInfo.Login == "" {
+			if v, ok := identity["id"].(float64); ok {
+				userInfo.ID = fmt.Sprintf("%.0f", v)
+			} else if s := getString(identity, "id"); s != "" {
+				userInfo.ID = s
+			}
+		}
+		if userInfo.Email == "" {
+			userInfo.Email = getString(identity, "email_address")
+		}
+		if userInfo.GivenName == "" {
+			userInfo.GivenName = getString(identity, "first_name")
+		}
+		if userInfo.FamilyName == "" {
+			userInfo.FamilyName = getString(identity, "last_name")
+		}
+		if userInfo.Name == "" {
+			first := userInfo.GivenName
+			last := userInfo.FamilyName
+			switch {
+			case first != "" && last != "":
+				userInfo.Name = first + " " + last
+			case first != "":
+				userInfo.Name = first
+			case last != "":
+				userInfo.Name = last
+			}
+		}
+	}
+
+	if userInfo.ID == "" && userInfo.Login != "" {
 		userInfo.ID = userInfo.Login
 	}
 

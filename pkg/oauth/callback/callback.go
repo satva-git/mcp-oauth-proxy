@@ -299,7 +299,7 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			UserID:                userInfo.ID,
 			GrantID:               grantID,
 			Scope:                 authReq.Scope,
-			ExpiresAt:             time.Now().Add(time.Hour),        // 1 hour for access token
+			ExpiresAt:             time.Now().Add(time.Hour),           // 1 hour for access token
 			RefreshTokenExpiresAt: time.Now().Add(30 * 24 * time.Hour), // 30 days for refresh token
 			CreatedAt:             time.Now(),
 			Revoked:               false,
