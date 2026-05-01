@@ -299,6 +299,9 @@ func (p *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Preserve the old refresh token so we can revoke it after issuing the new pair.
+	oldRefreshToken := refreshToken
+
 	// Generate new access token in format: userId:grantId:accessTokenSecret
 	accessTokenSecret := encryption.GenerateRandomString(32)
 	accessToken := fmt.Sprintf("%s:%s:%s", tokenData.UserID, tokenData.GrantID, accessTokenSecret)
@@ -331,7 +334,7 @@ func (p *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 	}
 
 	// Revoke the old refresh token
-	if err := p.db.RevokeToken(refreshToken); err != nil {
+	if err := p.db.RevokeToken(oldRefreshToken); err != nil {
 		log.Printf("Failed to revoke old refresh token: %v", err)
 	}
 
