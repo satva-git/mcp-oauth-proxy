@@ -366,6 +366,33 @@ func TestForwardAuthModeIntegration(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "resource")
 	})
+
+	t.Run("MetadataEndpointsAreCacheable", func(t *testing.T) {
+		for _, path := range []string{
+			"/.well-known/oauth-authorization-server",
+			"/.well-known/oauth-protected-resource",
+		} {
+			// First request advertises cacheability via Cache-Control + ETag.
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", path, nil)
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, path)
+			assert.Contains(t, w.Header().Get("Cache-Control"), "max-age=", path)
+			etag := w.Header().Get("ETag")
+			assert.NotEmpty(t, etag, path)
+
+			// A conditional re-fetch with the same ETag short-circuits to 304,
+			// so the obot gateway skips re-processing the metadata.
+			w = httptest.NewRecorder()
+			req = httptest.NewRequest("GET", path, nil)
+			req.Header.Set("If-None-Match", etag)
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusNotModified, w.Code, path)
+			assert.Empty(t, w.Body.String(), path)
+		}
+	})
 }
 
 // TestModeSpecificValidation tests that validation rules work correctly for different modes

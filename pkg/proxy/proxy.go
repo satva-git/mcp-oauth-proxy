@@ -326,7 +326,10 @@ func (p *OAuthProxy) oauthMetadataHandler(w http.ResponseWriter, r *http.Request
 		RegistrationEndpointAuthMethodsSupported: p.metadata.RegistrationEndpointAuthMethodsSupported,
 	}
 
-	handlerutils.JSON(w, http.StatusOK, metadata)
+	// Discovery metadata is static for the life of the process; advertise it as
+	// cacheable so clients (e.g. the obot gateway) stop re-fetching on a tight
+	// loop, which was driving dynamic-client rotation and token churn.
+	handlerutils.CachedJSON(w, r, http.StatusOK, 3600, metadata)
 }
 
 func (p *OAuthProxy) protectedResourceMetadataHandler(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +345,7 @@ func (p *OAuthProxy) protectedResourceMetadataHandler(w http.ResponseWriter, r *
 		ResourceDocumentation: p.metadata.ServiceDocumentation,
 	}
 
-	handlerutils.JSON(w, http.StatusOK, metadata)
+	handlerutils.CachedJSON(w, r, http.StatusOK, 3600, metadata)
 }
 
 func (p *OAuthProxy) mcpProxyHandler(w http.ResponseWriter, r *http.Request, next http.Handler) {
