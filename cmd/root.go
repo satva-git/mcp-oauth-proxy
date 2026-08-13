@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/gptscript-ai/cmd"
 	"github.com/obot-platform/mcp-oauth-proxy/pkg/proxy"
@@ -42,7 +43,10 @@ type RootCmd struct {
 	// Security configuration
 	EncryptionKey string `name:"encryption-key" env:"ENCRYPTION_KEY" usage:"Base64-encoded 32-byte AES-256 key for encrypting sensitive data (optional)"`
 
-	AllowedEmailDomains []string `name:"allowed-email-domains" env:"ALLOWED_EMAIL_DOMAINS" usage:"Comma-separated email domains permitted to complete the OAuth flow (e.g. 'example.com,example.org'). Empty allows any account. Enforced against the provider's userinfo response."`
+	// Declared as a string and split locally rather than as a []string: this
+	// repo has no working precedent for binding a slice from an environment
+	// variable, and a silently-unparsed value here would fail open.
+	AllowedEmailDomains string `name:"allowed-email-domains" env:"ALLOWED_EMAIL_DOMAINS" usage:"Comma-separated email domains permitted to complete the OAuth flow (e.g. 'example.com,example.org'). Empty allows any account. Enforced against the provider's userinfo response."`
 
 	// Server configuration
 	Port        string `name:"port" env:"PORT" usage:"Port to run the server on" default:"8080"`
@@ -86,7 +90,7 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 		EncryptionKey:             c.EncryptionKey,
 		Mode:                      c.Mode,
 		RoutePrefix:               c.RoutePrefix,
-		AllowedEmailDomains:       c.AllowedEmailDomains,
+		AllowedEmailDomains:       splitAndTrim(c.AllowedEmailDomains),
 	}
 
 	// Validate configuration
@@ -116,6 +120,22 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 	log.Printf("Database: %s", c.getDatabaseType())
 
 	return http.ListenAndServe(address, handler)
+}
+
+// splitAndTrim turns a comma-separated list into a slice, dropping empty
+// entries so that a trailing comma or a value of "," does not produce a
+// nonsensical empty domain.
+func splitAndTrim(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (c *RootCmd) validateConfig() error {
