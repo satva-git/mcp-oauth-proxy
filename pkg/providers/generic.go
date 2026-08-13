@@ -198,7 +198,14 @@ func (p *GenericProvider) GetAuthorizationURLWithPKCE(clientID, redirectURI, sco
 
 	opts := []oauth2.AuthCodeOption{
 		oauth2.AccessTypeOffline,
-		oauth2.ApprovalForce,
+	}
+	// oauth2.ApprovalForce is itself SetAuthURLParam("prompt", "consent"), so
+	// applying it alongside an explicit prompt from OAUTH_EXTRA_AUTHORIZE_PARAMS
+	// would emit the "prompt" query parameter twice. Let the configured value win
+	// (e.g. "select_account consent", which forces the account chooser as well as
+	// consent); otherwise keep the default consent-forcing behaviour.
+	if _, hasPrompt := p.extraAuthorizeParams["prompt"]; !hasPrompt {
+		opts = append(opts, oauth2.ApprovalForce)
 	}
 	if codeChallenge != "" {
 		opts = append(opts, oauth2.S256ChallengeOption(codeChallenge))

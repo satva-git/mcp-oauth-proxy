@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -121,4 +122,34 @@ func TestGenericProvider_BackwardsCompatibleFlatShape(t *testing.T) {
 	assert.Equal(t, "google-user-id", ui.ID)
 	assert.Equal(t, "g@example.com", ui.Email)
 	assert.Equal(t, "G User", ui.Name)
+}
+
+// TestGenericProvider_PromptSuppressesApprovalPrompt verifies that configuring an
+// explicit "prompt" via OAUTH_EXTRA_AUTHORIZE_PARAMS replaces oauth2.ApprovalForce
+// (itself prompt=consent) rather than emitting the prompt parameter twice.
+func TestGenericProvider_PromptSuppressesApprovalPrompt(t *testing.T) {
+	provider := NewGenericProvider("https://accounts.google.com/o/oauth2/v2/auth")
+	require.NoError(t, provider.SetExtraParams("prompt=select_account+consent", ""))
+
+	raw := provider.GetAuthorizationURLWithPKCE("cid", "https://x.example/callback", "openid", "state", "")
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	q := u.Query()
+
+	assert.Equal(t, []string{"select_account consent"}, q["prompt"],
+		"prompt must appear exactly once, with the configured value")
+	assert.Equal(t, "offline", q.Get("access_type"))
+}
+
+// TestGenericProvider_DefaultKeepsConsentPrompt ensures the default
+// consent-forcing behaviour is unchanged when no explicit prompt is configured.
+func TestGenericProvider_DefaultKeepsConsentPrompt(t *testing.T) {
+	provider := NewGenericProvider("https://accounts.google.com/o/oauth2/v2/auth")
+
+	raw := provider.GetAuthorizationURLWithPKCE("cid", "https://x.example/callback", "openid", "state", "")
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	q := u.Query()
+
+	assert.Equal(t, []string{"consent"}, q["prompt"])
 }
