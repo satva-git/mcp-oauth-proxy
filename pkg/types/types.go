@@ -11,16 +11,16 @@ const (
 
 // Config holds all configuration values for the OAuth proxy
 type Config struct {
-	Port                 string
-	DatabaseDSN          string
-	OAuthClientID        string
-	OAuthClientSecret    string
-	OAuthAuthorizeURL    string
-	OAuthJWKSURL         string
-	TrustedIssuer        string
-	TrustedAudiences     []string
-	OAuthTokenURL        string
-	OAuthUserinfoURL     string
+	Port              string
+	DatabaseDSN       string
+	OAuthClientID     string
+	OAuthClientSecret string
+	OAuthAuthorizeURL string
+	OAuthJWKSURL      string
+	TrustedIssuer     string
+	TrustedAudiences  []string
+	OAuthTokenURL     string
+	OAuthUserinfoURL  string
 	// Extra query-string parameters appended verbatim to the authorize URL
 	// (e.g. "type=web_server" for 37signals Basecamp). Format: URL-encoded
 	// query string (a=1&b=2). Empty means no extra params.
@@ -28,13 +28,16 @@ type Config struct {
 	// Extra parameters added to the token-exchange POST body (e.g.
 	// "type=web_server" for 37signals Basecamp). Same format as above.
 	OAuthExtraTokenParams string
-	ScopesSupported      string
-	EncryptionKey        string
-	MCPServerURL         string
-	Mode                 string
-	RoutePrefix          string
-	CookieNamePrefix     string
-	MCPPaths             []string
+	ScopesSupported       string
+	EncryptionKey         string
+	MCPServerURL          string
+	Mode                  string
+	RoutePrefix           string
+	CookieNamePrefix      string
+	MCPPaths              []string
+	// AllowedEmailDomains restricts which identities may complete the OAuth
+	// flow. Empty means any account is accepted.
+	AllowedEmailDomains  []string
 	APIKeyAuthWebhookURL string
 	MCPServerID          string
 }

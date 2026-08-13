@@ -42,6 +42,8 @@ type RootCmd struct {
 	// Security configuration
 	EncryptionKey string `name:"encryption-key" env:"ENCRYPTION_KEY" usage:"Base64-encoded 32-byte AES-256 key for encrypting sensitive data (optional)"`
 
+	AllowedEmailDomains []string `name:"allowed-email-domains" env:"ALLOWED_EMAIL_DOMAINS" usage:"Comma-separated email domains permitted to complete the OAuth flow (e.g. 'example.com,example.org'). Empty allows any account. Enforced against the provider's userinfo response."`
+
 	// Server configuration
 	Port        string `name:"port" env:"PORT" usage:"Port to run the server on" default:"8080"`
 	Host        string `name:"host" env:"HOST" usage:"Host to bind the server to" default:"localhost"`
@@ -70,20 +72,21 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 
 	// Convert CLI config to internal config format
 	config := &types.Config{
-		DatabaseDSN:       c.DatabaseDSN,
-		OAuthClientID:     c.OAuthClientID,
-		OAuthClientSecret: c.OAuthClientSecret,
-		OAuthAuthorizeURL: c.OAuthAuthorizeURL,
-		OAuthJWKSURL:      c.OAuthJWKSURL,
-		OAuthTokenURL:     c.OAuthTokenURL,
-		OAuthUserinfoURL:  c.OAuthUserinfoURL,
+		DatabaseDSN:               c.DatabaseDSN,
+		OAuthClientID:             c.OAuthClientID,
+		OAuthClientSecret:         c.OAuthClientSecret,
+		OAuthAuthorizeURL:         c.OAuthAuthorizeURL,
+		OAuthJWKSURL:              c.OAuthJWKSURL,
+		OAuthTokenURL:             c.OAuthTokenURL,
+		OAuthUserinfoURL:          c.OAuthUserinfoURL,
 		OAuthExtraAuthorizeParams: c.OAuthExtraAuthorizeParams,
 		OAuthExtraTokenParams:     c.OAuthExtraTokenParams,
-		ScopesSupported:   c.ScopesSupported,
-		MCPServerURL:      c.MCPServerURL,
-		EncryptionKey:     c.EncryptionKey,
-		Mode:              c.Mode,
-		RoutePrefix:       c.RoutePrefix,
+		ScopesSupported:           c.ScopesSupported,
+		MCPServerURL:              c.MCPServerURL,
+		EncryptionKey:             c.EncryptionKey,
+		Mode:                      c.Mode,
+		RoutePrefix:               c.RoutePrefix,
+		AllowedEmailDomains:       c.AllowedEmailDomains,
 	}
 
 	// Validate configuration

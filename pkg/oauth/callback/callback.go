@@ -31,6 +31,33 @@ type Handler struct {
 	clientSecret     string
 	routePrefix      string
 	cookieNamePrefix string
+	// allowedEmailDomains, when non-empty, restricts which identities may
+	// complete the flow. Enforced server-side against the provider's userinfo
+	// response; the "hd" authorize parameter is only a UI hint and must never
+	// be treated as a control.
+	allowedEmailDomains []string
+}
+
+// emailDomainAllowed reports whether email belongs to one of the allowed
+// domains. An empty allow-list disables the check entirely.
+func emailDomainAllowed(email string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false
+	}
+	domain := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	if domain == "" {
+		return false
+	}
+	for _, a := range allowed {
+		if domain == strings.ToLower(strings.TrimSpace(a)) {
+			return true
+		}
+	}
+	return false
 }
 
 // MCPUIManager interface for generating JWT tokens
@@ -38,15 +65,16 @@ type MCPUIManager interface {
 	GenerateMCPUICodeForDownstream(bearerToken, refreshToken string) (string, error)
 }
 
-func NewHandler(db Store, provider providers.Provider, encryptionKey []byte, clientID, clientSecret, routePrefix, cookieNamePrefix string) http.Handler {
+func NewHandler(db Store, provider providers.Provider, encryptionKey []byte, clientID, clientSecret, routePrefix, cookieNamePrefix string, allowedEmailDomains []string) http.Handler {
 	return &Handler{
-		db:               db,
-		provider:         provider,
-		encryptionKey:    encryptionKey,
-		clientID:         clientID,
-		clientSecret:     clientSecret,
-		routePrefix:      routePrefix,
-		cookieNamePrefix: cookieNamePrefix,
+		db:                  db,
+		provider:            provider,
+		encryptionKey:       encryptionKey,
+		clientID:            clientID,
+		clientSecret:        clientSecret,
+		routePrefix:         routePrefix,
+		cookieNamePrefix:    cookieNamePrefix,
+		allowedEmailDomains: allowedEmailDomains,
 	}
 }
 
@@ -189,6 +217,28 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			handlerutils.JSON(w, http.StatusBadRequest, types.OAuthError{
 				Error:            "invalid_grant",
 				ErrorDescription: "Failed to get user information",
+			})
+			return
+		}
+	}
+
+	// Enforce the email-domain allow-list before any grant exists. If the
+	// allow-list is configured but the scopes did not let us fetch an identity,
+	// deny: an unverifiable identity cannot be shown to satisfy the restriction.
+	if len(p.allowedEmailDomains) > 0 {
+		if !needsUserInfo {
+			log.Printf("Rejecting callback: ALLOWED_EMAIL_DOMAINS is set but scopes %q do not permit identity lookup", authReq.Scope)
+			handlerutils.JSON(w, http.StatusForbidden, types.OAuthError{
+				Error:            "access_denied",
+				ErrorDescription: "This server requires an identity scope (openid/profile/email) to verify your account domain.",
+			})
+			return
+		}
+		if !emailDomainAllowed(userInfo.Email, p.allowedEmailDomains) {
+			log.Printf("Rejecting callback for %q: email domain not in allow-list", userInfo.Email)
+			handlerutils.JSON(w, http.StatusForbidden, types.OAuthError{
+				Error:            "access_denied",
+				ErrorDescription: "Your account is not permitted to use this server. Sign in with an authorized organization account.",
 			})
 			return
 		}
