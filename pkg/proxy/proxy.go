@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -246,10 +247,13 @@ func (p *OAuthProxy) SetupRoutes(mux *http.ServeMux, next http.Handler) {
 
 	mux.HandleFunc("GET "+prefix+"/auth/mcp-ui/success", p.withCORS(p.withRateLimit(successHandler)))
 
-	// Protect everything else
-	mux.HandleFunc(prefix+"/{path...}", p.withCORS(p.withRateLimit(tokenValidator.WithTokenValidation(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Protect everything else. The gateway gate sits OUTSIDE token validation:
+	// a direct client is refused before its credential is even inspected, and
+	// it wraps only this route so the OAuth endpoints above stay reachable by a
+	// browser redirect that cannot carry a custom header.
+	mux.HandleFunc(prefix+"/{path...}", p.withCORS(p.withGatewaySecret(p.withRateLimit(tokenValidator.WithTokenValidation(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mcpProxyHandler(w, r, next)
-	})))))
+	}))))))
 }
 
 // GetHandler returns an http.Handler for the OAuth proxy
@@ -281,6 +285,33 @@ func (p *OAuthProxy) withCORS(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		next(w, r)
+	}
+}
+
+// withGatewaySecret refuses any request whose GatewayHeaderName does not equal
+// the configured GatewaySecret. It gates only the MCP proxy route so that a
+// client pointed directly at this proxy (bypassing O-Bot) is turned away with
+// 403 regardless of the credential it carries. When GatewaySecret is empty the
+// gate is disabled and the request passes straight through.
+func (p *OAuthProxy) withGatewaySecret(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if p.config.GatewaySecret != "" {
+			headerName := p.config.GatewayHeaderName
+			if headerName == "" {
+				// Never read from "" — that would match no header and 403 the
+				// gateway itself. Fall back to the documented default.
+				headerName = "X-Satva-Gateway"
+			}
+			got := r.Header.Get(headerName)
+			if subtle.ConstantTimeCompare([]byte(got), []byte(p.config.GatewaySecret)) != 1 {
+				handlerutils.JSON(w, http.StatusForbidden, types.OAuthError{
+					Error:            "access_denied",
+					ErrorDescription: "This server is reachable only through the Obot gateway. Connect from the Obot catalog rather than pointing a client at this URL directly.",
+				})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
 	}
 }
 

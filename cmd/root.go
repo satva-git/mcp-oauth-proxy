@@ -48,6 +48,9 @@ type RootCmd struct {
 	// variable, and a silently-unparsed value here would fail open.
 	AllowedEmailDomains string `name:"allowed-email-domains" env:"ALLOWED_EMAIL_DOMAINS" usage:"Comma-separated email domains permitted to complete the OAuth flow (e.g. 'example.com,example.org'). Empty allows any account. Enforced against the provider's userinfo response."`
 
+	GatewaySecret     string `name:"gateway-secret" env:"GATEWAY_SECRET" usage:"When set, the MCP proxy route answers 403 unless the request carries GATEWAY_HEADER equal to this value. Blocks clients that bypass the gateway (Obot). Empty = not enforced. OAuth routes are never gated."`
+	GatewayHeaderName string `name:"gateway-header" env:"GATEWAY_HEADER" usage:"Header the gateway secret is read from." default:"X-Satva-Gateway"`
+
 	// Server configuration
 	Port        string `name:"port" env:"PORT" usage:"Port to run the server on" default:"8080"`
 	Host        string `name:"host" env:"HOST" usage:"Host to bind the server to" default:"localhost"`
@@ -91,6 +94,8 @@ func (c *RootCmd) Run(cobraCmd *cobra.Command, args []string) error {
 		Mode:                      c.Mode,
 		RoutePrefix:               c.RoutePrefix,
 		AllowedEmailDomains:       splitAndTrim(c.AllowedEmailDomains),
+		GatewaySecret:             c.GatewaySecret,
+		GatewayHeaderName:         c.GatewayHeaderName,
 	}
 
 	// Validate configuration

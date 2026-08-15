@@ -37,7 +37,17 @@ type Config struct {
 	MCPPaths              []string
 	// AllowedEmailDomains restricts which identities may complete the OAuth
 	// flow. Empty means any account is accepted.
-	AllowedEmailDomains  []string
+	AllowedEmailDomains []string
+	// GatewaySecret, when non-empty, requires every request to the MCP proxy
+	// route (NOT the OAuth routes) to carry GatewayHeaderName equal to this
+	// value. O-Bot injects it as a fixed header from its catalog entry; a
+	// direct client (mcp-remote, Cursor, Claude Desktop) has no way to send it
+	// and is refused with 403. Empty means the gate is off (deploy-before-O-Bot
+	// state). The OAuth endpoints stay open because the browser redirect that
+	// hits /authorize and /callback cannot carry a custom header.
+	GatewaySecret     string
+	GatewayHeaderName string
+
 	APIKeyAuthWebhookURL string
 	MCPServerID          string
 }
