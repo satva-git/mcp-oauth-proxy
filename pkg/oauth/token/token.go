@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/obot-platform/mcp-oauth-proxy/pkg/encryption"
@@ -25,13 +26,33 @@ type TokenStore interface {
 	RevokeToken(token string) error
 }
 
+// refreshReplayWindow is how long a completed refresh is replayed to a caller
+// that presents the same (now-rotated) refresh token. Parallel tool calls and
+// client retries routinely do this; without the window the loser gets
+// invalid_grant and the user's connection looks disconnected.
+const refreshReplayWindow = 60 * time.Second
+
+type refreshReplay struct {
+	clientID string
+	response types.TokenResponse
+	at       time.Time
+}
+
 type Handler struct {
 	db TokenStore
+
+	// refreshMu serializes refresh grants and guards replays.
+	// ponytail: one global lock and an in-memory replay map — correct for a
+	// single proxy instance (our deployment). With multiple replicas, move the
+	// grace window into the DB (keep the old token valid for N seconds).
+	refreshMu sync.Mutex
+	replays   map[string]refreshReplay // keyed by the rotated-out refresh token
 }
 
 func NewHandler(db TokenStore) http.Handler {
 	return &Handler{
-		db: db,
+		db:      db,
+		replays: map[string]refreshReplay{},
 	}
 }
 
@@ -252,6 +273,21 @@ func (p *Handler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Re
 func (p *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, clientID string) {
 	refreshToken := r.FormValue("refresh_token")
 
+	// Refresh tokens rotate on every use. Serialize, and replay the result for
+	// a short window so a concurrent/retried request with the just-rotated
+	// token succeeds instead of failing with invalid_grant.
+	p.refreshMu.Lock()
+	defer p.refreshMu.Unlock()
+	for old, rp := range p.replays {
+		if time.Since(rp.at) > refreshReplayWindow {
+			delete(p.replays, old)
+		}
+	}
+	if rp, ok := p.replays[refreshToken]; ok && rp.clientID == clientID {
+		handlerutils.JSON(w, http.StatusOK, rp.response)
+		return
+	}
+
 	// Validate refresh token from database
 	tokenData, err := p.db.GetTokenByRefreshToken(refreshToken)
 	if err != nil {
@@ -345,6 +381,7 @@ func (p *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 		RefreshToken: refreshToken,
 		Scope:        tokenData.Scope,
 	}
+	p.replays[oldRefreshToken] = refreshReplay{clientID: clientID, response: response, at: time.Now()}
 
 	handlerutils.JSON(w, http.StatusOK, response)
 }
